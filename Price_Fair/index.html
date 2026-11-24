@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fair Price: check before you pay</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<style>
+:root{--bg:#f6f3ea;--surf:#fff;--ink:#17231d;--mute:#5d6b63;--line:#e2ddcf;--brand:#0f4d38;--on:#fff;--sun:#f2b705;--ok:#1f8a4c;--okbg:#dff3e6;--hi:#c8402a;--hibg:#fbe3dd;--lo:#2a6fc8;--lobg:#dfeafa}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1713;--surf:#18241e;--ink:#eef2ec;--mute:#9db0a4;--line:#2a3a31;--brand:#3fbf8a;--on:#08150f;--okbg:#17382a;--hibg:#3d1f19;--lobg:#172b44;--ok:#5fd18d;--hi:#ff8a73;--lo:#7fb0f5}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.app{max-width:480px;margin:0 auto;padding:16px 16px 40px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.logo{font-weight:800;font-size:22px}
+select{background:var(--surf);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;max-width:100%}
+.mock{background:var(--sun);color:#17231d;border-radius:12px;padding:8px 12px;font-size:14px;font-weight:600;margin:12px 0;text-align:center}
+.tabs{display:flex;background:var(--surf);border:1.5px solid var(--line);border-radius:999px;padding:4px;margin-bottom:16px}
+.tabs button{flex:1;border:0;background:none;padding:12px;border-radius:999px;font-weight:700;color:var(--mute)}
+.tabs button[aria-selected=true]{background:var(--brand);color:var(--on)}
+h1{font-size:28px;line-height:1.15;margin:0 0 6px}
+.mute{color:var(--mute)}
+.photo{display:block;text-align:center;background:var(--brand);color:var(--on);border-radius:24px;padding:34px 16px;margin:16px 0 10px;cursor:pointer;font-weight:800;font-size:22px}
+.photo span{display:block;font-size:46px;margin-bottom:6px}
+.photo small{display:block;font-weight:500;font-size:15px;opacity:.9;margin-top:4px}
+.link{background:none;border:0;color:var(--brand);font-weight:700;text-decoration:underline;padding:8px 0}
+.card{background:var(--surf);border:1.5px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.thumb{display:flex;gap:12px;align-items:center}
+.thumb img{width:72px;height:72px;object-fit:cover;border-radius:12px}
+.spin{width:20px;height:20px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;display:inline-block;vertical-align:-4px;margin-right:8px;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+label{font-weight:700;font-size:15px;display:block;margin:10px 0 4px}
+.field{width:100%;padding:13px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg)}
+.price-row{display:flex;gap:8px;align-items:center}
+.price-row .cur{font-weight:700;color:var(--mute)}
+.verdict{border-radius:16px;padding:14px;margin-top:12px;text-align:center;font-weight:800;font-size:22px}
+.verdict small{display:block;font-weight:500;font-size:15px;margin-top:2px}
+.ok{background:var(--okbg);color:var(--ok)}.hi{background:var(--hibg);color:var(--hi)}.lo{background:var(--lobg);color:var(--lo)}.none{background:var(--bg);color:var(--mute);font-size:16px;font-weight:600}
+.gauge{position:relative;height:10px;border-radius:99px;margin:20px 0 4px;background:linear-gradient(90deg,var(--lobg) 0 20%,var(--okbg) 20% 80%,var(--hibg) 80%)}
+.pin{position:absolute;top:-7px;width:6px;height:24px;border-radius:4px;background:var(--ink);transform:translateX(-50%);transition:left .4s}
+.scale{display:flex;justify-content:space-between;font-size:13px;color:var(--mute)}
+.btn{border:0;background:var(--brand);color:var(--on);padding:14px 20px;border-radius:999px;font-weight:700;width:100%}
+.btn.alt{background:var(--surf);color:var(--ink);border:1.5px solid var(--line)}
+.sum{background:var(--brand);color:var(--on);border-radius:18px;padding:16px;margin-bottom:12px;font-weight:700;font-size:19px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px}
+.chip{flex:none;border:1.5px solid var(--line);background:var(--surf);border-radius:999px;padding:9px 16px;font-weight:600}
+.chip[aria-pressed=true]{background:var(--brand);color:var(--on);border-color:var(--brand)}
+.prov h3{margin:0;font-size:19px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;max-width:88%;text-align:center;font-weight:600;opacity:0;transition:.3s;pointer-events:none}
+.toast.on{opacity:1}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+<header><div class="logo">✓ Fair Price</div><select id="city" aria-label="Your city"></select></header>
+<div class="mock">Prices in this demo are mock-up data.</div>
+<div class="tabs" role="tablist"><button role="tab" id="t1" aria-selected="true">Check a price</button><button role="tab" id="t2" aria-selected="false">Find a service</button></div>
+
+<section id="p1">
+  <h1>Is this price fair?</h1>
+  <p class="mute" style="margin:0">Take a photo of a product or a receipt.</p>
+  <label class="photo" id="pick"><span>📷</span>Take or upload a photo<small>Camera or gallery</small><input id="file" type="file" accept="image/*" hidden></label>
+  <p class="mute" style="font-size:13px;margin:0 0 8px">If you continue, the photo is sent to OpenAI through our secure function for product recognition. Fair Price does not save it.</p>
+  <div style="text-align:center"><button class="link" id="manual">No photo? Choose an item instead</button></div>
+  <div id="status" class="card hidden"></div>
+  <div id="out"></div>
+</section>
+
+<section id="p2" class="hidden">
+  <h1>Trusted services</h1>
+  <p class="mute" style="margin:0 0 12px">Verified providers with clear prices.</p>
+  <div class="chips" id="chips"></div>
+  <div id="slist"></div>
+</section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const CITIES={Kigali:{c:"RWF",fx:1450},Lagos:{c:"NGN",fx:1500},Nairobi:{c:"KES",fx:130},Freetown:{c:"SLE",fx:23},Accra:{c:"GHS",fx:15}};
+// Mock prices in USD (low, high). words = text we look for in a photo.
+const ITEMS=[
+{n:"Rice (1 cup)",i:"🍚",l:.217391,h:.217391,w:["rice","riz","mchele"]},
+{n:"Cooking oil (1 L)",i:"🛢️",l:2,h:3,w:["oil","huile","mafuta"]},
+{n:"Sugar (1 kg)",i:"🧂",l:.9,h:1.3,w:["sugar","sucre","sukari"]},
+{n:"Eggs (tray of 30)",i:"🥚",l:4,h:6,w:["egg","oeuf","mayai"]},
+{n:"Tomatoes (1 kg)",i:"🍅",l:.7,h:1.4,w:["tomato","tomate","nyanya"]},
+{n:"Bread (loaf)",i:"🍞",l:.6,h:1,w:["bread","pain","mkate"]},
+{n:"Bottled water (1.5 L)",i:"💧",l:.5,h:.8,w:["water","eau","maji"]},
+{n:"Soda (500 ml)",i:"🥤",l:.4,h:.7,w:["soda","cola","fanta","sprite"]},
+{n:"Mobile data (1 GB)",i:"📶",l:.8,h:1.5,w:["data","bundle"]},
+{n:"Cooking gas (6 kg refill)",i:"🔥",l:7,h:10,w:["gas"]},
+{n:"Laundry soap (bar)",i:"🧼",l:.5,h:.9,w:["soap","savon","sabuni"]}];
+ITEMS.push({n:"Electric fan",i:"🌀",l:15,h:30,w:["fan","ventilateur"]});
+const SERV=[
+{n:"Tech Corner Repairs",s:"Phone screen repair",k:"Phones",i:"📱",r:4.8,l:8,h:20},
+{n:"Byte Doctors",s:"Laptop repair",k:"Phones",i:"💻",r:4.7,l:10,h:25},
+{n:"Mama Grace Plumbing",s:"Pipe leak repair",k:"Home",i:"🚰",r:4.9,l:5,h:12},
+{n:"BrightWire Services",s:"Electrician call-out",k:"Home",i:"💡",r:4.6,l:6,h:15},
+{n:"Stitch & Style",s:"Tailoring, trousers",k:"Fashion",i:"🧵",r:4.8,l:3,h:10},
+{n:"Crown Cuts Barber",s:"Haircut",k:"Fashion",i:"✂️",r:4.7,l:1,h:4},
+{n:"SafeRide Riders",s:"Motorbike ride, 5 km",k:"Transport",i:"🏍️",r:4.4,l:1,h:2},
+{n:"Trust Auto Garage",s:"Basic car service",k:"Transport",i:"🔧",r:4.6,l:15,h:30}];
+const $=s=>document.querySelector(s);
+const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let cname="Kigali",city=CITIES.Kigali,entries=[];
+const num=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:city.fx<50?1:0});
+const money=u=>city.c+" "+num(u*city.fx);
+const toast=t=>{const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2400)};
+const judge=(p,it)=>{ // p in USD
+ const pct=Math.round((p/((it.l+it.h)/2)-1)*100);
+ if(p>it.h*1.05)return{k:"hi",t:"Too high",d:"This costs more than most people pay.",pct};
+ if(p<it.l*.9)return{k:"lo",t:"Very low",d:"Cheaper than usual. Check the quality.",pct};
+ return{k:"ok",t:"Fair price",d:"This is in the usual range.",pct}};
+
+// setup
+Object.keys(CITIES).forEach(k=>$("#city").add(new Option(k,k)));
+$("#city").onchange=e=>{cname=e.target.value;city=CITIES[cname];renderEntries();renderServ()};
+$("#t1").onclick=()=>tab(1);$("#t2").onclick=()=>tab(2);
+function tab(n){$("#p1").classList.toggle("hidden",n!==1);$("#p2").classList.toggle("hidden",n!==2);$("#t1").setAttribute("aria-selected",n===1);$("#t2").setAttribute("aria-selected",n===2)}
+
+// results
+function renderEntries(){
+ const o=$("#out");if(!entries.length){o.innerHTML="";return}
+ const bad=entries.filter(e=>e.i>=0&&e.p>0&&judge(e.p/city.fx,ITEMS[e.i]).k==="hi").length,done=entries.filter(e=>e.i>=0&&e.p>0).length;
+ let h="";
+ if(entries.length>1&&done)h+=`<div class="sum">${bad?bad+" of "+done+" prices look too high":"All "+done+" prices look fair"}</div>`;
+ entries.forEach((e,idx)=>{const it=e.i>=0?ITEMS[e.i]:null;
+  h+=`<div class="card"><label for="s${idx}">Item</label><select class="field" id="s${idx}" data-i="${idx}">${e.i<0?`<option value="-1" selected>Detected: ${escapeHTML(e.label)} (no mock price yet)</option>`:""}${ITEMS.map((x,j)=>`<option value="${j}" ${j===e.i?"selected":""}>${x.i} ${x.n}</option>`).join("")}</select>
+  <label for="p${idx}">Price you were asked</label><div class="price-row"><span class="cur">${city.c}</span><input class="field" id="p${idx}" data-i="${idx}" type="number" inputmode="decimal" min="0" placeholder="Type the price" value="${e.p||""}"></div>
+  <div id="v${idx}"></div></div>`});
+ h+=`<button class="btn alt" id="add">+ Add another item</button>`;
+ o.innerHTML=h;
+ o.querySelectorAll("select").forEach(s=>s.onchange=()=>{entries[+s.dataset.i].i=+s.value;verdict(+s.dataset.i)});
+ o.querySelectorAll("input").forEach(s=>s.oninput=()=>{entries[+s.dataset.i].p=parseFloat(s.value)||0;verdict(+s.dataset.i)});
+ $("#add").onclick=()=>{entries.push({i:0,p:0});renderEntries();$("#p"+(entries.length-1)).focus()};
+ entries.forEach((_,i)=>verdict(i,true))}
+function verdict(i,quiet){
+ const e=entries[i],it=e.i>=0?ITEMS[e.i]:null,box=$("#v"+i);
+ if(!it){box.innerHTML=`<div class="verdict none">No mock price for ${escapeHTML(e.label)}<small>Enter the price if you want to note it. This item cannot be judged yet.</small></div>`;if(!quiet&&entries.length>1)renderSumOnly();return}
+ if(!(e.p>0)){box.innerHTML=`<div class="verdict none">Usual price: ${money(it.l)} to ${money(it.h)}<small>Type the price to check it.</small></div>`}
+ else{const u=e.p/city.fx,v=judge(u,it),span=it.h-it.l,pos=span===0?50:Math.max(3,Math.min(97,20+((u-it.l)/span*60)));
+  box.innerHTML=`<div class="verdict ${v.k}">${v.t} (${v.pct>0?"+":""}${v.pct}%)<small>${v.d}</small></div>
+  <div class="gauge"><div class="pin" style="left:${pos}%"></div></div>
+  <div class="scale"><span>Cheap</span><span>Usual ${money(it.l)} to ${money(it.h)}</span><span>Pricey</span></div>`}
+ if(!quiet){const old=$("#out .sum");if(old||entries.length>1)renderSumOnly()}}
+function renderSumOnly(){ // update top summary without losing focus
+ const bad=entries.filter(e=>e.i>=0&&e.p>0&&judge(e.p/city.fx,ITEMS[e.i]).k==="hi").length,done=entries.filter(e=>e.i>=0&&e.p>0).length;
+ let s=$("#out .sum");const t=done?(bad?bad+" of "+done+" prices look too high":"All "+done+" prices look fair"):"";
+ if(!s&&t){s=document.createElement("div");s.className="sum";$("#out").prepend(s)}
+ if(s){s.textContent=t;s.classList.toggle("hidden",!t)}}
+
+// photo reading
+function say(h){const s=$("#status");s.classList.remove("hidden");s.innerHTML=h}
+function shrink(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();
+ im.onload=()=>{const m=1600,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);res({canvas:c,url})};
+ im.onerror=()=>rej(new Error("bad image"));im.src=url})}
+function findItems(text){
+ const found=[];
+ text.toLowerCase().split(/\n/).forEach(line=>{
+  ITEMS.forEach((it,i)=>{if(found.some(f=>f.i===i))return;
+   if(it.w.some(w=>new RegExp("\\b"+w).test(line))){
+    const nums=(line.match(/\d[\d,]*\.?\d*/g)||[]).map(n=>parseFloat(n.replace(/,/g,""))).filter(n=>n>0);
+    found.push({i,p:nums.length?nums[nums.length-1]:0})}})});
+ return found}
+async function recognizeProduct(canvas){
+ const small=document.createElement("canvas"),scale=Math.min(1,1024/Math.max(canvas.width,canvas.height));
+ small.width=Math.round(canvas.width*scale);small.height=Math.round(canvas.height*scale);
+ small.getContext("2d").drawImage(canvas,0,0,small.width,small.height);
+ const data=small.toDataURL("image/jpeg",.78).split(",")[1];
+ const response=await fetch("/.netlify/functions/recognize",{
+  method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({image:data,mimeType:"image/jpeg"})
+ });
+ if(!response.ok)throw new Error(`recognition request failed (${response.status})`);
+ return response.json()}
+async function readText(canvas){
+ if(typeof Tesseract==="undefined")throw new Error("Text reading is unavailable.");
+ const w=await Tesseract.createWorker("eng");
+ let timer;
+ try{
+  const r=await Promise.race([w.recognize(canvas),new Promise((_,rej)=>{timer=setTimeout(()=>rej(new Error("Text reading timed out.")),45000)})]);
+  return findItems(r.data.text||"");
+ }finally{clearTimeout(timer);await w.terminate()}
+}
+$("#file").onchange=async ev=>{
+ const f=ev.target.files[0];if(!f)return;ev.target.value="";
+ if(!confirm("To recognize the product, this photo will be sent to OpenAI through Fair Price’s secure function. The app does not save it, but OpenAI’s handling is subject to its own policies. Continue?"))return;
+ entries=[];renderEntries();
+ let img;try{img=await shrink(f)}catch(e){say("We couldn’t open that photo. Try another one.");return}
+ const thumb=`<img src="${img.url}" alt="Your photo">`;
+ say(`<div class="thumb">${thumb}<div><span class="spin"></span>Checking your photo…<div class="mute" style="font-size:14px">The image is sent to OpenAI for recognition.</div></div></div>`);
+ let found=[];
+ try{
+  const result=await recognizeProduct(img.canvas);
+  if(result.isReceipt){
+   found=await readText(img.canvas);
+   if(found.length<2)found=found.map(x=>({i:x.i,p:0}));
+   if(found.length){
+    entries=found;
+    say(`<div class="thumb">${thumb}<div><strong>We found ${found.length} item${found.length>1?"s":""} in this receipt.</strong><div class="mute" style="font-size:14px">Check the item names and prices below; OCR can make mistakes.</div></div></div>`);
+   }else{
+    entries=[{i:-1,label:"receipt items",p:0}];
+    say(`<div class="thumb">${thumb}<div><strong>This looks like a receipt, but we couldn’t read its items.</strong><div class="mute" style="font-size:14px">Choose an item below or use manual entry.</div></div></div>`);
+   }
+  }else if(result.product){
+   const product=String(result.product).slice(0,80),words=product.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+   const match=ITEMS.findIndex(it=>it.w.some(w=>words.includes(w.toLowerCase()))||
+    it.n.toLowerCase().split(/[^a-z0-9]+/).some(w=>w.length>2&&words.includes(w)));
+   entries=[{i:match,label:product,p:0}];
+   say(`<div class="thumb">${thumb}<div><strong>AI thinks this is: ${escapeHTML(product)}.</strong><div class="mute" style="font-size:14px">Please confirm or change the item. AI can be wrong.</div></div></div>`);
+  }else throw new Error("No product was identified.");
+ }catch(e){
+  try{
+   found=await readText(img.canvas);
+   if(found.length<2)found=found.map(x=>({i:x.i,p:0}));
+   if(found.length){
+    entries=found;
+    say(`<div class="thumb">${thumb}<div><strong>Image recognition is unavailable. Text reading found ${found.length} possible item${found.length>1?"s":""}.</strong><div class="mute" style="font-size:14px">Check the results carefully.</div></div></div>`);
+   }else{
+    entries=[{i:-1,label:"unknown product",p:0}];
+    say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">Choose the item below. No item was guessed.</div></div></div>`);
+   }
+  }catch(ocrError){
+   entries=[{i:-1,label:"unknown product",p:0}];
+   say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">Choose an item manually. Photo reading is unavailable too.</div></div></div>`);
+  }
+ }
+ renderEntries()};
+$("#manual").onclick=()=>{$("#status").classList.add("hidden");entries=[{i:-1,label:"choose an item",p:0}];renderEntries();$("#s0").focus()};
+
+// services
+let scat="All";
+function renderServ(){
+ const cats=["All",...new Set(SERV.map(s=>s.k))];
+ $("#chips").innerHTML=cats.map(c=>`<button class="chip" aria-pressed="${c===scat}" data-c="${c}">${c}</button>`).join("");
+ document.querySelectorAll("#chips .chip").forEach(b=>b.onclick=()=>{scat=b.dataset.c;renderServ()});
+ $("#slist").innerHTML=SERV.filter(s=>scat==="All"||s.k===scat).map((s,n)=>`<div class="card prov"><h3>${s.i} ${s.n}</h3>
+  <div class="mute">${s.s}</div><div style="margin:6px 0"><strong style="color:var(--ok)">✔ Verified</strong> · ★ ${s.r}</div>
+  <div style="font-size:20px;font-weight:800;margin-bottom:10px">${money(s.l)} to ${money(s.h)}</div>
+  <button class="btn" data-n="${s.n}">Ask for a quote</button></div>`).join("");
+ document.querySelectorAll("#slist .btn").forEach(b=>b.onclick=()=>toast("Demo only: "+b.dataset.n+" would reply with a quote."))}
+renderServ();
+</script>
+</body>
+</html>
