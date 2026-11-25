@@ -173,7 +173,7 @@ async function recognizeProduct(canvas){
  const data=small.toDataURL("image/jpeg",.78).split(",")[1];
  let response;
  try{
-  response=await fetch("/.netlify/functions/recognize",{
+  response=await fetch("/api/recognize",{
    method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({image:data,mimeType:"image/jpeg"})
   });

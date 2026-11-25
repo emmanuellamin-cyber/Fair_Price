@@ -1,8 +1,0 @@
-# Fair Price is a static HTML page plus one Netlify Function, all inside Price_Fair/.
-# There is no package.json or framework, so no build command is needed.
-[build]
-  publish = "Price_Fair"
-  functions = "Price_Fair/netlify/functions"
-
-[functions]
-  node_bundler = "esbuild"
