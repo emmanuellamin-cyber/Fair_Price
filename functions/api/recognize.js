@@ -1,10 +1,10 @@
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
+const MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
 export async function onRequestPost({ request, env }) {
-  if (!env.GEMINI_API_KEY) {
-    return jsonResponse(503, { error: "Gemini image recognition is not configured on this site." });
+  if (!env.AI || typeof env.AI.run !== "function") {
+    return jsonResponse(503, { error: "Cloudflare Workers AI is not configured on this site." });
   }
 
   let body;
@@ -36,105 +36,64 @@ export async function onRequestPost({ request, env }) {
     return jsonResponse(413, { error: "The image must be smaller than 5 MB." });
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
-  let upstream;
+  let output;
   try {
-    upstream = await fetch(GEMINI_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "x-goog-api-key": env.GEMINI_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{
-            text: 'Look at the image. If it is a receipt or shopping list, return {"isReceipt":true,"product":null}. Otherwise identify the main physical product in a short common name. If uncertain or no product is visible, return {"isReceipt":false,"product":null}. Never guess a price.',
-          }],
+    output = await env.AI.run(MODEL, {
+      messages: [
+        {
+          role: "system",
+          content: 'Look at the image. If it is a receipt or shopping list, return {"isReceipt":true,"product":null}. Otherwise identify the main physical product in a short common name. If uncertain or no product is visible, return {"isReceipt":false,"product":null}. Never guess a price. Reply with only one JSON object, without markdown.',
         },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: "Identify the main product, or tell me if this is a receipt." },
-            { inlineData: { mimeType: body.mimeType, data: encoded } },
-          ],
-        }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 100,
-        },
-      }),
+        { role: "user", content: "Identify the main product, or tell me if this is a receipt." },
+      ],
+      image: `data:${body.mimeType};base64,${encoded}`,
+      max_tokens: 100,
+      temperature: 0,
     });
   } catch (error) {
-    if (error.name !== "AbortError") {
-      console.error("Could not reach the Gemini image recognition service.", { name: error.name });
-    }
-    return jsonResponse(error.name === "AbortError" ? 504 : 502, {
-      error: error.name === "AbortError"
-        ? "Image recognition timed out. Try again or choose an item manually."
-        : "Could not reach the Gemini image recognition service.",
+    console.error("Cloudflare Workers AI image recognition failed.", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message.slice(0, 200) : "Unknown error",
     });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!upstream.ok) {
-    let data;
-    try {
-      data = await upstream.json();
-    } catch (error) {
-      console.error("Gemini returned an unreadable error response.", {
-        status: upstream.status,
-        name: error.name,
-      });
-      return jsonResponse(502, {
-        error: `Gemini returned an unreadable error response (HTTP ${upstream.status}).`,
-      });
-    }
-
-    const details = data && data.error && typeof data.error === "object" ? data.error : {};
-    const code = typeof details.status === "string"
-      ? details.status.slice(0, 80)
-      : typeof details.code === "string" ? details.code.slice(0, 80) : null;
-    console.error("Gemini image recognition request failed.", { status: upstream.status, code });
-
-    let message;
-    if (upstream.status === 401) {
-      message = "Gemini rejected the API key. Check that GEMINI_API_KEY in Cloudflare is valid.";
-    } else if (upstream.status === 403) {
-      message = "Gemini denied access. Check the API project's permissions and model access.";
-    } else if (upstream.status === 429) {
-      message = "Gemini usage or rate limits were reached. Check AI Studio quota and limits.";
-    } else if (code) {
-      message = `Gemini rejected the request (HTTP ${upstream.status}, ${code}). Check the model, API access, and function logs.`;
-    } else {
-      message = `Gemini image recognition failed (HTTP ${upstream.status}). Check function logs.`;
-    }
-
-    return jsonResponse(502, { error: message, providerStatus: upstream.status, providerCode: code });
+    return jsonResponse(502, {
+      error: "Cloudflare Workers AI could not process this image. Check the AI binding, model access, and function logs.",
+    });
   }
 
   let result;
   try {
-    const data = await upstream.json();
-    const text = data.candidates?.[0]?.content?.parts
-      ?.map((part) => typeof part.text === "string" ? part.text : "")
-      .join("");
-    result = JSON.parse(text || "");
+    result = parseModelResponse(output?.response);
   } catch {
-    return jsonResponse(502, { error: "Gemini returned an unreadable result." });
+    return jsonResponse(502, { error: "Cloudflare Workers AI returned an unreadable result." });
   }
 
   if (!result || typeof result.isReceipt !== "boolean" ||
       (result.product !== null && typeof result.product !== "string")) {
-    return jsonResponse(502, { error: "Gemini returned an invalid result." });
+    return jsonResponse(502, { error: "Cloudflare Workers AI returned an invalid result." });
   }
 
   return jsonResponse(200, {
     isReceipt: result.isReceipt,
     product: typeof result.product === "string" ? result.product.trim().slice(0, 80) || null : null,
   });
+}
+
+function parseModelResponse(response) {
+  if (typeof response !== "string") {
+    throw new Error("The model response was not text.");
+  }
+
+  const text = response.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end < start) {
+      throw new Error("The model response did not contain JSON.");
+    }
+    return JSON.parse(text.slice(start, end + 1));
+  }
 }
 
 function jsonResponse(status, body) {
