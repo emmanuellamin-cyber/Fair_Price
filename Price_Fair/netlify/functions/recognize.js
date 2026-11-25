@@ -72,6 +72,9 @@ exports.handler = async (event) => {
     });
   } catch (error) {
     clearTimeout(timeout);
+    if (error.name !== "AbortError") {
+      console.error("Could not reach the OpenAI image recognition service.", { name: error.name });
+    }
     return response(error.name === "AbortError" ? 504 : 502, {
       error: error.name === "AbortError"
         ? "Image recognition timed out. Try again or choose an item manually."
@@ -82,7 +85,41 @@ exports.handler = async (event) => {
   }
 
   if (!upstream.ok) {
-    return response(502, { error: "The image recognition service could not process this photo." });
+    let data;
+    try {
+      data = await upstream.json();
+    } catch (error) {
+      console.error("OpenAI returned an unreadable error response.", {
+        status: upstream.status,
+        name: error.name,
+      });
+      return response(502, {
+        error: `OpenAI returned an unreadable error response (HTTP ${upstream.status}).`,
+      });
+    }
+
+    const details = data && data.error && typeof data.error === "object" ? data.error : {};
+    const code = typeof details.code === "string" ? details.code.slice(0, 80) : null;
+    console.error("OpenAI image recognition request failed.", {
+      status: upstream.status,
+      type: typeof details.type === "string" ? details.type.slice(0, 80) : null,
+      code,
+    });
+
+    let message;
+    if (upstream.status === 401) {
+      message = "OpenAI rejected the API key. Check that OPENAI_API_KEY in Netlify is valid.";
+    } else if (upstream.status === 403) {
+      message = "OpenAI denied access. Check the API project's permissions and model access.";
+    } else if (upstream.status === 429) {
+      message = "OpenAI usage or rate limits were reached. Check API billing and usage limits.";
+    } else if (code) {
+      message = `OpenAI rejected the request (HTTP ${upstream.status}, ${code}). Check API model access and Netlify function logs.`;
+    } else {
+      message = `OpenAI image recognition failed (HTTP ${upstream.status}). Check Netlify function logs.`;
+    }
+
+    return response(502, { error: message, providerStatus: upstream.status, providerCode: code });
   }
 
   let result;
