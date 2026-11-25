@@ -171,12 +171,17 @@ async function recognizeProduct(canvas){
  small.width=Math.round(canvas.width*scale);small.height=Math.round(canvas.height*scale);
  small.getContext("2d").drawImage(canvas,0,0,small.width,small.height);
  const data=small.toDataURL("image/jpeg",.78).split(",")[1];
- const response=await fetch("/.netlify/functions/recognize",{
-  method:"POST",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({image:data,mimeType:"image/jpeg"})
- });
- if(!response.ok)throw new Error(`recognition request failed (${response.status})`);
- return response.json()}
+ let response;
+ try{
+  response=await fetch("/.netlify/functions/recognize",{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({image:data,mimeType:"image/jpeg"})
+  });
+ }catch{throw new Error("Could not reach the recognition function. Serve this app through Netlify so the function is available.")}
+ let result;
+ try{result=await response.json()}catch{throw new Error(`The recognition endpoint returned an invalid response (${response.status}). Serve this app through Netlify so its function is available.`)}
+ if(!response.ok)throw new Error(result.error||`The recognition request failed (${response.status}).`);
+ return result}
 async function readText(canvas){
  if(typeof Tesseract==="undefined")throw new Error("Text reading is unavailable.");
  const w=await Tesseract.createWorker("eng");
@@ -197,14 +202,16 @@ $("#file").onchange=async ev=>{
  try{
   const result=await recognizeProduct(img.canvas);
   if(result.isReceipt){
-   found=await readText(img.canvas);
+    say(`<div class="thumb">${thumb}<div><span class="spin"></span>Reading receipt text…<div class="mute" style="font-size:14px">Checking for item names and prices.</div></div></div>`);
+    let receiptError="";
+    try{found=await readText(img.canvas)}catch(e){receiptError=escapeHTML(e&&e.message?e.message:"Text reading failed.")}
    if(found.length<2)found=found.map(x=>({i:x.i,p:0}));
    if(found.length){
     entries=found;
     say(`<div class="thumb">${thumb}<div><strong>We found ${found.length} item${found.length>1?"s":""} in this receipt.</strong><div class="mute" style="font-size:14px">Check the item names and prices below; OCR can make mistakes.</div></div></div>`);
    }else{
     entries=[{i:-1,label:"receipt items",p:0}];
-    say(`<div class="thumb">${thumb}<div><strong>This looks like a receipt, but we couldn’t read its items.</strong><div class="mute" style="font-size:14px">Choose an item below or use manual entry.</div></div></div>`);
+     say(`<div class="thumb">${thumb}<div><strong>This looks like a receipt, but we couldn’t read its items.</strong><div class="mute" style="font-size:14px">${receiptError||"Check the photo and try again."} Choose an item below or use manual entry.</div></div></div>`);
    }
   }else if(result.product){
    const product=String(result.product).slice(0,80),words=product.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -214,6 +221,8 @@ $("#file").onchange=async ev=>{
    say(`<div class="thumb">${thumb}<div><strong>AI thinks this is: ${escapeHTML(product)}.</strong><div class="mute" style="font-size:14px">Please confirm or change the item. AI can be wrong.</div></div></div>`);
   }else throw new Error("No product was identified.");
  }catch(e){
+   const reason=escapeHTML(e&&e.message?e.message:"Image recognition failed.");
+   say(`<div class="thumb">${thumb}<div><span class="spin"></span><strong>AI recognition unavailable. Trying text reading…</strong><div class="mute" style="font-size:14px">${reason}</div></div></div>`);
   try{
    found=await readText(img.canvas);
    if(found.length<2)found=found.map(x=>({i:x.i,p:0}));
@@ -222,14 +231,15 @@ $("#file").onchange=async ev=>{
     say(`<div class="thumb">${thumb}<div><strong>Image recognition is unavailable. Text reading found ${found.length} possible item${found.length>1?"s":""}.</strong><div class="mute" style="font-size:14px">Check the results carefully.</div></div></div>`);
    }else{
     entries=[{i:-1,label:"unknown product",p:0}];
-    say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">Choose the item below. No item was guessed.</div></div></div>`);
+    say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">${reason} Choose the item below. No item was guessed.</div></div></div>`);
    }
   }catch(ocrError){
    entries=[{i:-1,label:"unknown product",p:0}];
-   say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">Choose an item manually. Photo reading is unavailable too.</div></div></div>`);
+   const ocrReason=escapeHTML(ocrError&&ocrError.message?ocrError.message:"Text reading failed.");
+   say(`<div class="thumb">${thumb}<div><strong>We couldn’t identify this photo.</strong><div class="mute" style="font-size:14px">${reason} Text reading also failed: ${ocrReason} Choose an item manually.</div></div></div>`);
   }
  }
- renderEntries()};
+ renderEntries();$("#out").scrollIntoView({behavior:"smooth",block:"start"})};
 $("#manual").onclick=()=>{$("#status").classList.add("hidden");entries=[{i:-1,label:"choose an item",p:0}];renderEntries();$("#s0").focus()};
 
 // services
