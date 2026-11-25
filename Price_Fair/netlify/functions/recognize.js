@@ -6,8 +6,8 @@ exports.handler = async (event) => {
     return response(405, { error: "Use POST to recognize an image." });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return response(503, { error: "Image recognition is not configured on this site." });
+  if (!process.env.GEMINI_API_KEY) {
+    return response(503, { error: "Gemini image recognition is not configured on this site." });
   }
 
   let body;
@@ -38,47 +38,46 @@ exports.handler = async (event) => {
   const timeout = setTimeout(() => controller.abort(), 25000);
   let upstream;
   try {
-    upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+    upstream = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent", {
       method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: 'Look at the image. If it is a receipt or shopping list, return {"isReceipt":true,"product":null}. Otherwise identify the main physical product in a short common name. If uncertain or no product is visible, return {"isReceipt":false,"product":null}. Never guess a price. Return only JSON.',
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Identify the main product, or tell me if this is a receipt." },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${body.mimeType};base64,${image.toString("base64")}`,
-                  detail: "low",
-                },
+        systemInstruction: {
+          parts: [{
+            text: 'Look at the image. If it is a receipt or shopping list, return {"isReceipt":true,"product":null}. Otherwise identify the main physical product in a short common name. If uncertain or no product is visible, return {"isReceipt":false,"product":null}. Never guess a price.',
+          }],
+        },
+        contents: [{
+          role: "user",
+          parts: [
+            { text: "Identify the main product, or tell me if this is a receipt." },
+            {
+              inlineData: {
+                mimeType: body.mimeType,
+                data: image.toString("base64"),
               },
-            ],
-          },
-        ],
-        max_tokens: 100,
+            },
+          ],
+        }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 100,
+        },
       }),
     });
   } catch (error) {
     clearTimeout(timeout);
     if (error.name !== "AbortError") {
-      console.error("Could not reach the OpenAI image recognition service.", { name: error.name });
+      console.error("Could not reach the Gemini image recognition service.", { name: error.name });
     }
     return response(error.name === "AbortError" ? 504 : 502, {
       error: error.name === "AbortError"
         ? "Image recognition timed out. Try again or choose an item manually."
-        : "Could not reach the image recognition service.",
+        : "Could not reach the Gemini image recognition service.",
     });
   } finally {
     clearTimeout(timeout);
@@ -89,34 +88,35 @@ exports.handler = async (event) => {
     try {
       data = await upstream.json();
     } catch (error) {
-      console.error("OpenAI returned an unreadable error response.", {
+      console.error("Gemini returned an unreadable error response.", {
         status: upstream.status,
         name: error.name,
       });
       return response(502, {
-        error: `OpenAI returned an unreadable error response (HTTP ${upstream.status}).`,
+        error: `Gemini returned an unreadable error response (HTTP ${upstream.status}).`,
       });
     }
 
     const details = data && data.error && typeof data.error === "object" ? data.error : {};
-    const code = typeof details.code === "string" ? details.code.slice(0, 80) : null;
-    console.error("OpenAI image recognition request failed.", {
+    const code = typeof details.status === "string"
+      ? details.status.slice(0, 80)
+      : typeof details.code === "string" ? details.code.slice(0, 80) : null;
+    console.error("Gemini image recognition request failed.", {
       status: upstream.status,
-      type: typeof details.type === "string" ? details.type.slice(0, 80) : null,
       code,
     });
 
     let message;
     if (upstream.status === 401) {
-      message = "OpenAI rejected the API key. Check that OPENAI_API_KEY in Netlify is valid.";
+      message = "Gemini rejected the API key. Check that GEMINI_API_KEY in your hosting settings is valid.";
     } else if (upstream.status === 403) {
-      message = "OpenAI denied access. Check the API project's permissions and model access.";
+      message = "Gemini denied access. Check the API project's permissions and model access.";
     } else if (upstream.status === 429) {
-      message = "OpenAI usage or rate limits were reached. Check API billing and usage limits.";
+      message = "Gemini usage or rate limits were reached. Check AI Studio quota and limits.";
     } else if (code) {
-      message = `OpenAI rejected the request (HTTP ${upstream.status}, ${code}). Check API model access and Netlify function logs.`;
+      message = `Gemini rejected the request (HTTP ${upstream.status}, ${code}). Check the model, API access, and function logs.`;
     } else {
-      message = `OpenAI image recognition failed (HTTP ${upstream.status}). Check Netlify function logs.`;
+      message = `Gemini image recognition failed (HTTP ${upstream.status}). Check function logs.`;
     }
 
     return response(502, { error: message, providerStatus: upstream.status, providerCode: code });
@@ -125,14 +125,17 @@ exports.handler = async (event) => {
   let result;
   try {
     const data = await upstream.json();
-    result = JSON.parse(data.choices?.[0]?.message?.content || "");
+    const text = data.candidates?.[0]?.content?.parts
+      ?.map((part) => typeof part.text === "string" ? part.text : "")
+      .join("");
+    result = JSON.parse(text || "");
   } catch {
-    return response(502, { error: "The image recognition service returned an unreadable result." });
+    return response(502, { error: "Gemini returned an unreadable result." });
   }
 
   if (!result || typeof result.isReceipt !== "boolean" ||
       (result.product !== null && typeof result.product !== "string")) {
-    return response(502, { error: "The image recognition service returned an invalid result." });
+    return response(502, { error: "Gemini returned an invalid result." });
   }
 
   return response(200, {
