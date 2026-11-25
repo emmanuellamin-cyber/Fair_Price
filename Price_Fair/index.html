@@ -64,7 +64,7 @@ label{font-weight:700;font-size:15px;display:block;margin:10px 0 4px}
   <h1>Is this price fair?</h1>
   <p class="mute" style="margin:0">Take a photo of a product or a receipt.</p>
   <label class="photo" id="pick"><span>📷</span>Take or upload a photo<small>Camera or gallery</small><input id="file" type="file" accept="image/*" hidden></label>
-  <p class="mute" style="font-size:13px;margin:0 0 8px">If you continue, the photo is sent to Google Gemini through our secure function. Google may use free-tier content to improve its products. Fair Price does not save it.</p>
+  <p class="mute" style="font-size:13px;margin:0 0 8px">If you continue, the photo is sent to Cloudflare Workers AI through our secure function. Fair Price does not save it.</p>
   <div style="text-align:center"><button class="link" id="manual">No photo? Choose an item instead</button></div>
   <div id="status" class="card hidden"></div>
   <div id="out"></div>
@@ -177,9 +177,9 @@ async function recognizeProduct(canvas){
    method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({image:data,mimeType:"image/jpeg"})
   });
- }catch{throw new Error("Could not reach the recognition function. Serve this app through Netlify so the function is available.")}
+ }catch{throw new Error("Could not reach the recognition function. Serve this app through Cloudflare Pages so the function is available.")}
  let result;
- try{result=await response.json()}catch{throw new Error(`The recognition endpoint returned an invalid response (${response.status}). Serve this app through Netlify so its function is available.`)}
+ try{result=await response.json()}catch{throw new Error(`The recognition endpoint returned an invalid response (${response.status}). Serve this app through Cloudflare Pages so its function is available.`)}
  if(!response.ok)throw new Error(result.error||`The recognition request failed (${response.status}).`);
  return result}
 async function readText(canvas){
@@ -193,11 +193,11 @@ async function readText(canvas){
 }
 $("#file").onchange=async ev=>{
  const f=ev.target.files[0];if(!f)return;ev.target.value="";
- if(!confirm("To recognize the product, this photo will be sent to Google Gemini through Fair Price’s secure function. Google may use free-tier content to improve its products. The app does not save it. Continue?"))return;
+ if(!confirm("To recognize the product, this photo will be sent to Cloudflare Workers AI through Fair Price’s secure function. The app does not save it. Continue?"))return;
  entries=[];renderEntries();
  let img;try{img=await shrink(f)}catch(e){say("We couldn’t open that photo. Try another one.");return}
  const thumb=`<img src="${img.url}" alt="Your photo">`;
- say(`<div class="thumb">${thumb}<div><span class="spin"></span>Checking your photo…<div class="mute" style="font-size:14px">The image is sent to Google Gemini for recognition.</div></div></div>`);
+ say(`<div class="thumb">${thumb}<div><span class="spin"></span>Checking your photo…<div class="mute" style="font-size:14px">The image is sent to Cloudflare Workers AI for recognition.</div></div></div>`);
  let found=[];
  try{
   const result=await recognizeProduct(img.canvas);
