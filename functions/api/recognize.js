@@ -42,9 +42,9 @@ export async function onRequestPost({ request, env }) {
       messages: [
         {
           role: "system",
-          content: 'Look at the image. If it is a receipt or shopping list, return {"isReceipt":true,"product":null}. Otherwise identify the main physical product in a short common name. If uncertain or no product is visible, return {"isReceipt":false,"product":null}. Never guess a price. Reply with only one JSON object, without markdown.',
+          content: "Classify the image. If it is a receipt or shopping list, reply exactly RECEIPT. If a physical product is visible, reply PRODUCT: followed by its short common name. If uncertain or no product is visible, reply exactly UNKNOWN. Never guess a price. Do not include any other text.",
         },
-        { role: "user", content: "Identify the main product, or tell me if this is a receipt." },
+        { role: "user", content: "Classify this image using the required reply format." },
       ],
       image: `data:${body.mimeType};base64,${encoded}`,
       max_tokens: 100,
@@ -66,6 +66,8 @@ export async function onRequestPost({ request, env }) {
       : typeof output?.response === "string" ? output.response
       : typeof output?.result === "string" ? output.result
       : typeof output?.result?.response === "string" ? output.result.response
+      : typeof output?.response === "object" ? output.response
+      : typeof output?.result === "object" ? output.result
       : null;
     result = parseModelResponse(responseText);
   } catch {
@@ -84,6 +86,12 @@ export async function onRequestPost({ request, env }) {
 }
 
 function parseModelResponse(response) {
+  if (response && typeof response === "object" &&
+      typeof response.isReceipt === "boolean" &&
+      (response.product === null || typeof response.product === "string")) {
+    return response;
+  }
+
   if (typeof response !== "string") {
     throw new Error("The model response was not text.");
   }
@@ -95,7 +103,17 @@ function parseModelResponse(response) {
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     if (start < 0 || end < start) {
-      throw new Error("The model response did not contain JSON.");
+      if (/^RECEIPT[.!]?$/i.test(text)) {
+        return { isReceipt: true, product: null };
+      }
+      if (/^UNKNOWN[.!]?$/i.test(text)) {
+        return { isReceipt: false, product: null };
+      }
+      const product = text.match(/^PRODUCT:\s*(.{1,80})$/i);
+      if (product) {
+        return { isReceipt: false, product: product[1].trim() || null };
+      }
+      throw new Error("The model response did not contain a recognized result.");
     }
     return JSON.parse(text.slice(start, end + 1));
   }
