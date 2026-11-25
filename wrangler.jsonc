@@ -1,5 +1,8 @@
 {
   "name": "fair-price",
   "compatibility_date": "2026-11-25",
-  "pages_build_output_dir": "./Price_Fair"
+  "pages_build_output_dir": "./Price_Fair",
+  "ai": {
+    "binding": "AI"
+  }
 }
