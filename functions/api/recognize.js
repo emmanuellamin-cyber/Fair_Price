@@ -62,7 +62,12 @@ export async function onRequestPost({ request, env }) {
 
   let result;
   try {
-    result = parseModelResponse(output?.response);
+    const responseText = typeof output === "string" ? output
+      : typeof output?.response === "string" ? output.response
+      : typeof output?.result === "string" ? output.result
+      : typeof output?.result?.response === "string" ? output.result.response
+      : null;
+    result = parseModelResponse(responseText);
   } catch {
     return jsonResponse(502, { error: "Cloudflare Workers AI returned an unreadable result." });
   }
