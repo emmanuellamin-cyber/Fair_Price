@@ -123,7 +123,18 @@ const ITEMS=[
 {n:"Paint (20 L)",i:"🎨",l:20,h:45,w:["paint","peinture"]},
 {n:"PVC pipe (3 m)",i:"🚰",l:3,h:7,w:["pvc pipe","water pipe","pipe"]},
 {n:"Plywood sheet (4 × 8 ft)",i:"🪵",l:12,h:25,w:["plywood","plywood sheet"]},
-{n:"Nails (1 kg)",i:"🔨",l:2,h:5,w:["nails","nail"]}];
+{n:"Nails (1 kg)",i:"🔨",l:2,h:5,w:["nails","nail"]},
+{n:"Feature phone (keypad)",i:"📱",l:15,h:35,w:["feature phone","keypad phone","basic phone"]},
+{n:"Budget Android phone (64 GB)",i:"📱",l:60,h:120,w:["budget android","entry android","tecno","itel","infinix"]},
+{n:"Mid-range Android phone (128 GB)",i:"📱",l:150,h:350,w:["mid-range android","galaxy a","redmi","xiaomi"]},
+{n:"Premium Android phone (256 GB)",i:"📱",l:450,h:900,w:["flagship android","galaxy s","galaxy z","pixel","oneplus"]},
+{n:"iPhone (128 GB)",i:"📱",l:350,h:900,w:["iphone","apple phone"]},
+{n:"Smartphone screen assembly (part only)",i:"📱",l:20,h:120,w:["smartphone screen","phone screen","iphone screen","mobile screen","screen assembly","screen replacement","touchscreen replacement","display replacement","lcd replacement"]},
+{n:"Smartphone battery (part only)",i:"🔋",l:10,h:60,w:["smartphone battery","phone battery","iphone battery","battery replacement","replacement battery"]},
+{n:"Charging port (part only)",i:"🔌",l:5,h:35,w:["charging port","usb c port","usb-c port","lightning port"]},
+{n:"Rear camera module (part only)",i:"📷",l:15,h:100,w:["rear camera module","phone camera module","camera replacement"]},
+{n:"Smartphone back cover (part only)",i:"📱",l:5,h:50,w:["smartphone back cover","phone back cover","iphone back cover","galaxy back cover","back cover","replacement back cover"]},
+{n:"Phone speaker (part only)",i:"🔊",l:5,h:40,w:["phone speaker","earpiece speaker","loudspeaker replacement"]}];
 ITEMS.push({n:"Electric fan",i:"🌀",l:15,h:30,w:["fan","ventilateur"]});
 const SERV=[
 {n:"Tech Corner Repairs",s:"Phone screen repair",k:"Phones",i:"📱",r:4.8,l:8,h:20},
@@ -145,6 +156,19 @@ const judge=(p,it)=>{ // p in USD
  if(p>it.h*1.05)return{k:"hi",t:"Too high",d:"This costs more than most people pay.",pct};
  if(p<it.l*.9)return{k:"lo",t:"Very low",d:"Cheaper than usual. Check the quality.",pct};
  return{k:"ok",t:"Fair price",d:"This is in the usual range.",pct}};
+function matchItemIndex(product){
+ const normalize=value=>String(value).toLowerCase().replace(/([a-z])([0-9])/g,"$1 $2").replace(/([0-9])([a-z])/g,"$1 $2").replace(/[^a-z0-9]+/g," ").trim();
+ const normalized=normalize(product),padded=` ${normalized} `;
+ let bestIndex=-1,bestLength=0;
+ ITEMS.forEach((item,index)=>item.w.forEach(keyword=>{
+  const term=normalize(keyword);
+  if(term.length>bestLength&&padded.includes(` ${term} `)){bestIndex=index;bestLength=term.length}
+ }));
+ if(bestIndex>=0)return bestIndex;
+ const ignored=new Set(["mobile","phone","smartphone","android","apple","replacement","part","screen","battery","camera","speaker","module","cover","display","assembly","gb"]);
+ const words=new Set(normalized.split(" "));
+ return ITEMS.findIndex(item=>normalize(item.n).split(" ").some(word=>word.length>2&&!ignored.has(word)&&words.has(word)));
+}
 
 // setup
 Object.keys(CITIES).forEach(k=>$("#city").add(new Option(k,k)));
@@ -244,9 +268,7 @@ $("#file").onchange=async ev=>{
      say(`<div class="thumb">${thumb}<div><strong>This looks like a receipt, but we couldn’t read its items.</strong><div class="mute" style="font-size:14px">${receiptError||"Check the photo and try again."} Choose an item below or use manual entry.</div></div></div>`);
    }
   }else if(result.product){
-   const product=String(result.product).slice(0,80),words=product.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-   const match=ITEMS.findIndex(it=>it.w.some(w=>words.includes(w.toLowerCase()))||
-    it.n.toLowerCase().split(/[^a-z0-9]+/).some(w=>w.length>2&&words.includes(w)));
+   const product=String(result.product).slice(0,80),match=matchItemIndex(product);
    entries=[{i:match,label:product,p:0}];
    say(`<div class="thumb">${thumb}<div><strong>AI thinks this is: ${escapeHTML(product)}.</strong><div class="mute" style="font-size:14px">Please confirm or change the item. AI can be wrong.</div></div></div>`);
   }else throw new Error("No product was identified.");
